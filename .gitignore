@@ -1,8 +1,9 @@
 .env
 __pycache__/
 *.pyc
-twitchio.db
+tokens.db
 .tio.tokens.json
 *.log
+.venv/
 Pipfile.lock
 sheets_credentials.json
