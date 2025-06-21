@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+twitchio.db
+.tio.tokens.json
+*.log
+Pipfile.lock
+sheets_credentials.json
