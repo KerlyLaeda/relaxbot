@@ -11,6 +11,7 @@ import twitchio
 from twitchio.ext import commands
 from twitchio import eventsub
 
+
 load_dotenv()
 
 LOGGER: logging.Logger = logging.getLogger("Bot")
@@ -30,20 +31,49 @@ sheet = client.open_by_key(GOOGLE_SHEETS_ID).sheet1
 
 
 def get_user_info(username: str, field_name: str) -> int | None:
-    """Retrieve a numeric field (Tokens, Tickets) for a given user from Google Sheet."""
+    """Retrieve a numeric field (Tokens, Tickets) for a given user from Google Sheet.
+
+    Returns:
+        int: value from the specified field, 0 if the user is not found.
+        None: if a Google Sheet error occurs.
+    """
     try:
         records = sheet.get_all_records()
-        for record in records:
-            if record.get("Username", "").lower() == username.lower():
-                return record.get(field_name, 0)
-        return 0  # user not found - treat as 0
     except gspread.exceptions.SpreadsheetNotFound as e:
         LOGGER.error(f"Spreadsheet not found or inaccessible: {e}")
+        return None
     except gspread.exceptions.APIError as e:
         LOGGER.error(f"Google Sheets API error: {e}")
+        return None
     except Exception as e:  # what exception
         LOGGER.exception(f"Unexpected error in {get_user_info.__name__}")
-    return None
+        return None
+
+    for record in records:
+        if record.get("Username", "").lower() == username.lower():
+            return record.get(field_name, 0)
+    return 0  # user not found - treat as 0
+
+
+def update_user_fields(username: str, updates: dict[str, int]) -> bool:
+    """Update numeric fields for a user with given values."""
+    try:
+        user_cell = sheet.find(username)
+        if not user_cell:
+            LOGGER.warning(f"Username {username} not found in sheet.")
+            return False
+
+        row = user_cell.row
+        headers = sheet.row_values(1)  # get header row
+    except Exception as e:  # :(
+        LOGGER.error(f"Unexpected error: {e}")
+        return False
+
+    for field, new_value in updates.items():
+        if field in headers:
+            col = headers.index(field) + 1
+            sheet.update_cell(row, col, new_value)  # try except?
+    return True
 
 
 class Bot(commands.Bot):
@@ -137,6 +167,35 @@ class MyComponent(commands.Component):
             await ctx.reply(f"{ctx.author.name}, you have {tickets} tickets.")
         else:
             await ctx.reply(f"{ctx.author.name}, there was an error checking your tickets.")
+
+    @commands.command(name="buy")
+    async def buy_tickets(self, ctx: commands.Context, n: int):
+        """Allows user to exchange their custom tokens for tickets.
+
+        !buy <n>
+        """
+        username = ctx.author.name
+        points = get_user_info(username, "Tokens")
+        tickets = get_user_info(username, "Tickets")
+
+        if points is None or tickets is None:
+            await ctx.reply(f"{username}, failed to retrieve your balance.")
+            return
+
+        cost = 52000
+        if int(points) < cost * n:
+            await ctx.reply(f"{username}, you don't have enough tokens. Your balance is {points}, 1 ticket costs {cost} tokens.")
+            return
+
+        updated = update_user_fields(username, {
+            "Tokens": int(points) - cost * n,
+            "Tickets": int(tickets) + n
+        })
+
+        if updated:
+            await ctx.reply(f"{username}, you bought {n} tickets. You now have {int(tickets) + n} tickets!")
+        else:
+            await ctx.reply(f"{username}, there was an error updating your data.")
 
 
 def main() -> None:
