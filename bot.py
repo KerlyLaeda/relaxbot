@@ -197,6 +197,44 @@ class MyComponent(commands.Component):
         else:
             await ctx.reply(f"{username}, there was an error updating your data.")
 
+    @commands.command(name="transfer")
+    async def transfer_to_user(self, ctx: commands.Context, n: int, username: str):
+        """Allow users to give their custom points to other users.
+
+        !transfer <amount> <username>"""
+        gifter = ctx.author.name
+        receiver = username.lstrip("@").lower()
+
+        if gifter.lower() == receiver:
+            await ctx.reply("You can't transfer tokens to yourself.")
+            return
+
+        # Get balance for gifter and giftee
+        gifter_points = get_user_info(gifter, "Tokens")
+        receiver_points = get_user_info(receiver, "Tokens")
+
+        if not gifter_points or not receiver_points:  # add receiver in table if null?
+            await ctx.reply("Could not fetch balances.")
+            return
+
+        if n <= 0:
+            await ctx.reply("Amount must be greater than 0.")
+            return
+
+        if int(gifter_points) < n:
+            await ctx.reply(f"{gifter}, you don't have enough tokens.")
+            return
+
+        # Update fields for gifter and giftee
+        updated = (update_user_fields(gifter, {"Tokens": int(gifter_points) - n})
+                   and update_user_fields(receiver, {"Tokens": int(receiver_points) + n}))
+        if updated:
+            await ctx.send(f"{gifter} transferred {n} tokens to {receiver}.")
+            LOGGER.info(f"Transfer: {gifter} -> {receiver}: {n} tokens.")
+        else:
+            await ctx.send("Error transferring tokens.")
+            LOGGER.warning(f"Failed transfer: {gifter} -> {receiver}.")
+
 
 def main() -> None:
     twitchio.utils.setup_logging(level=logging.INFO)
